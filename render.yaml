@@ -1,10 +1,12 @@
+# Exported from Render on 2025-11-06T21:40:33Z
+version: "1"
 services:
-  - type: web
-    name: blueprint-node
-    env: node
-    buildCommand: npm install
-    startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-
+- type: web
+  name: blueprint-node
+  runtime: node
+  repo: https://github.com/liame1/blueprint-node
+  plan: free
+  region: oregon
+  buildCommand: npm install
+  startCommand: node server.js
+  autoDeployTrigger: commit
