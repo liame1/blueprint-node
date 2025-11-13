@@ -1,10 +1,19 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Validate DATABASE_URL is set
+if (!process.env.DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL environment variable is not set!');
+  console.error('Please ensure DATABASE_URL is configured in your environment.');
+  process.exit(1);
+}
+
 // Create PostgreSQL connection pool
+// Render.com and most cloud providers require SSL for PostgreSQL
+const isLocalhost = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('localhost');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: !isLocalhost ? { rejectUnauthorized: false } : false
 });
 
 // Initialize database tables
