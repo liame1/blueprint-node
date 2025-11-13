@@ -13,6 +13,7 @@
 			WASD to move and SPACE to jump
 		</div>
 		<div id="container"></div>
+		<div id="player-count" class="player-count">Players Online: 0</div>
 
 		<script type="importmap">
 			{
@@ -22,6 +23,8 @@
 				}
 			}
 		</script>
+
+		<script src="/socket.io/socket.io.js"></script>
 
 		<script type="module">
 
@@ -37,6 +40,16 @@
 			import { Capsule } from 'three/addons/math/Capsule.js';
 
 			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+			const socket = io({ transports: ['websocket'], autoConnect: true });
+			const remotePlayers = new Map();
+			const PLAYER_UPDATE_INTERVAL = 100;
+			let lastPlayerUpdate = 0;
+			const playerCountElement = document.getElementById('player-count');
+			const remoteBodyGeometry = new THREE.CylinderGeometry( 0.3, 0.3, 1.2, 12 );
+			const remoteHeadGeometry = new THREE.SphereGeometry( 0.3, 16, 12 );
+			const remoteBodyMaterial = new THREE.MeshStandardMaterial( { color: 0x3a8ef6 } );
+			const remoteHeadMaterial = new THREE.MeshStandardMaterial( { color: 0xffffff } );
 
 			const clock = new THREE.Clock();
 
@@ -76,6 +89,34 @@
 			renderer.shadowMap.type = THREE.VSMShadowMap;
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			container.appendChild( renderer.domElement );
+
+			socket.on( 'existingPlayers', ( players ) => {
+				players.forEach( ( player ) => {
+					if ( ! player || player.id === socket.id ) return;
+					createOrUpdateRemotePlayer( player.id, player.position, player.rotation );
+				} );
+			} );
+
+			socket.on( 'playerUpdated', ( player ) => {
+				if ( ! player || player.id === socket.id ) return;
+				createOrUpdateRemotePlayer( player.id, player.position, player.rotation );
+			} );
+
+			socket.on( 'playerDisconnected', ( { id } = {} ) => {
+				if ( ! id ) return;
+				removeRemotePlayer( id );
+			} );
+
+			socket.on( 'activePlayerCount', ( count ) => {
+				if ( playerCountElement ) {
+					playerCountElement.textContent = `Players Online: ${count}`;
+				}
+			} );
+
+			socket.on( 'connect', () => {
+				lastPlayerUpdate = 0;
+				sendPlayerState( true );
+			} );
 
 			const stats = new Stats();
 			stats.domElement.style.position = 'absolute';
@@ -126,6 +167,7 @@
 			const vector1 = new THREE.Vector3();
 			const vector2 = new THREE.Vector3();
 			const vector3 = new THREE.Vector3();
+			const tempNetworkVector = new THREE.Vector3();
 
 			document.addEventListener( 'keydown', ( event ) => {
 
@@ -464,6 +506,73 @@
 
 			}
 
+			function sendPlayerState( force = false ) {
+				if ( ! socket.connected ) return;
+
+				const now = performance.now();
+				if ( ! force && now - lastPlayerUpdate < PLAYER_UPDATE_INTERVAL ) return;
+				lastPlayerUpdate = now;
+
+				tempNetworkVector.copy( playerCollider.start ).add( playerCollider.end ).multiplyScalar( 0.5 );
+
+				socket.emit( 'playerUpdate', {
+					position: {
+						x: tempNetworkVector.x,
+						y: tempNetworkVector.y,
+						z: tempNetworkVector.z
+					},
+					rotation: {
+						x: camera.rotation.x,
+						y: camera.rotation.y,
+						z: camera.rotation.z
+					}
+				} );
+			}
+
+			function createOrUpdateRemotePlayer( id, position = {}, rotation = {} ) {
+				if ( typeof position.x !== 'number' || typeof position.y !== 'number' || typeof position.z !== 'number' ) {
+					return;
+				}
+
+				let entry = remotePlayers.get( id );
+				if ( ! entry ) {
+					entry = { mesh: buildRemotePlayerMesh() };
+					scene.add( entry.mesh );
+					remotePlayers.set( id, entry );
+				}
+
+				entry.mesh.position.set( position.x, position.y, position.z );
+				entry.mesh.rotation.set( 0, 0, 0 );
+
+				if ( typeof rotation.y === 'number' ) {
+					entry.mesh.rotation.y = rotation.y;
+				}
+			}
+
+			function removeRemotePlayer( id ) {
+				const entry = remotePlayers.get( id );
+				if ( ! entry ) return;
+
+				scene.remove( entry.mesh );
+				remotePlayers.delete( id );
+			}
+
+			function buildRemotePlayerMesh() {
+				const group = new THREE.Group();
+
+				const body = new THREE.Mesh( remoteBodyGeometry, remoteBodyMaterial );
+				body.castShadow = true;
+				body.receiveShadow = true;
+				group.add( body );
+
+				const head = new THREE.Mesh( remoteHeadGeometry, remoteHeadMaterial );
+				head.position.y = 0.9;
+				head.castShadow = true;
+				head.receiveShadow = true;
+				group.add( head );
+
+				return group;
+			}
 
 			function animate() {
 
@@ -483,6 +592,8 @@
 					teleportPlayerIfOob();
 
 				}
+
+				sendPlayerState();
 
 				renderer.render( scene, camera );
 

@@ -20,6 +20,7 @@ app.use('/chat', express.static(__dirname));
 
 // Store active users and their rooms
 const activeUsers = new Map(); // socketId -> { username, userId, roomId }
+const activePlayers = new Map();
 
 // Serve index.html
 app.get('/', (req, res) => {
@@ -53,6 +54,42 @@ app.get('/api/rooms/:roomName/messages', async (req, res) => {
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
+
+  activePlayers.set(socket.id, null);
+
+  const playersSnapshot = Array.from(activePlayers.entries())
+    .filter(([, data]) => data && data.position)
+    .map(([id, data]) => ({ id, position: data.position, rotation: data.rotation }));
+
+  socket.emit('existingPlayers', playersSnapshot);
+  io.emit('activePlayerCount', activePlayers.size);
+
+  socket.on('playerUpdate', (payload) => {
+    if (!payload || !payload.position || !payload.rotation) {
+      return;
+    }
+
+    const sanitized = {
+      position: {
+        x: Number(payload.position.x) || 0,
+        y: Number(payload.position.y) || 0,
+        z: Number(payload.position.z) || 0
+      },
+      rotation: {
+        x: Number(payload.rotation.x) || 0,
+        y: Number(payload.rotation.y) || 0,
+        z: Number(payload.rotation.z) || 0
+      }
+    };
+
+    activePlayers.set(socket.id, sanitized);
+
+    socket.broadcast.emit('playerUpdated', {
+      id: socket.id,
+      position: sanitized.position,
+      rotation: sanitized.rotation
+    });
+  });
 
   // Handle user joining
   socket.on('join', async ({ username, roomName }) => {
@@ -142,6 +179,12 @@ io.on('connection', (socket) => {
 
   // Handle user leaving
   socket.on('disconnect', () => {
+    const hadPlayer = activePlayers.delete(socket.id);
+    if (hadPlayer) {
+      socket.broadcast.emit('playerDisconnected', { id: socket.id });
+    }
+    io.emit('activePlayerCount', activePlayers.size);
+
     const userData = activeUsers.get(socket.id);
     if (userData) {
       socket.to(`room-${userData.roomId}`).emit('userLeft', {
