@@ -80,6 +80,7 @@
 			const PLAYER_CAPSULE_END_Y = PLAYER_CAPSULE_START_Y + 0.18;
 			const PLAYER_CENTER_TO_HEAD = PLAYER_CAPSULE_END_Y - ( ( PLAYER_CAPSULE_START_Y + PLAYER_CAPSULE_END_Y ) / 2 );
 			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_SCALE;
+			const PLAYER_SPAWN_OFFSET = 1;
 			let playerUsername = '';
 			let playerColor = DEFAULT_PLAYER_COLOR;
 			let hasProfile = false;
@@ -318,9 +319,11 @@
 				new THREE.Vector3( 0, PLAYER_CAPSULE_END_Y, 0 ),
 				PLAYER_CAPSULE_RADIUS
 			);
+			playerCollider.translate( new THREE.Vector3( 0, PLAYER_SPAWN_OFFSET, 0 ) );
 
 			const playerVelocity = new THREE.Vector3();
 			const playerDirection = new THREE.Vector3();
+			camera.position.set( 0, PLAYER_CAPSULE_END_Y + PLAYER_SPAWN_OFFSET, 0 );
 
 			let playerOnFloor = false;
 			let mouseTime = 0;
@@ -689,8 +692,8 @@
 
 				if ( camera.position.y <= - 25 ) {
 
-					playerCollider.start.set( 0, PLAYER_CAPSULE_START_Y, 0 );
-					playerCollider.end.set( 0, PLAYER_CAPSULE_END_Y, 0 );
+					playerCollider.start.set( 0, PLAYER_CAPSULE_START_Y + PLAYER_SPAWN_OFFSET, 0 );
+					playerCollider.end.set( 0, PLAYER_CAPSULE_END_Y + PLAYER_SPAWN_OFFSET, 0 );
 					playerCollider.radius = PLAYER_CAPSULE_RADIUS;
 					camera.position.copy( playerCollider.end );
 					camera.rotation.set( 0, 0, 0 );

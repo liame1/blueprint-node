@@ -37,6 +37,7 @@ button {
 	z-index: 1; /* TODO Solve this in HTML */
 
 	visibility: hidden;
+	opacity: 0;
 	
 }
 
