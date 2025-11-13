@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const compression = require('compression');
+const crypto = require('crypto');
 const db = require('./db');
 
 const app = express();
@@ -13,6 +14,40 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'tree');
 const NODE_MODULES_DIR = path.join(__dirname, 'node_modules');
 const GLTF_DIR = path.join(PUBLIC_DIR, 'gltf');
+
+function generateColorFromId(id) {
+  const hash = crypto.createHash('sha1').update(String(id)).digest('hex');
+  const hue = parseInt(hash.slice(0, 2), 16) / 255; // 0-1
+  const saturation = 0.6;
+  const lightness = 0.5;
+
+  function hslToHex(h, s, l) {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+
+    const r = hue2rgb(p, q, h + 1 / 3);
+    const g = hue2rgb(p, q, h);
+    const b = hue2rgb(p, q, h - 1 / 3);
+
+    const toHex = (x) => {
+      const val = Math.round(x * 255).toString(16);
+      return val.length === 1 ? `0${val}` : val;
+    };
+
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  return hslToHex(hue, saturation, lightness);
+}
 
 // Middleware
 app.use(compression());
@@ -32,7 +67,7 @@ app.use('/chat', express.static(__dirname));
 
 // Store active users and their rooms
 const activeUsers = new Map(); // socketId -> { username, userId, roomId }
-const activePlayers = new Map();
+const activePlayers = new Map(); // socketId -> { position, rotation, username, color }
 
 // Serve index.html
 app.get('/', (req, res) => {
@@ -67,14 +102,41 @@ app.get('/api/rooms/:roomName/messages', async (req, res) => {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  activePlayers.set(socket.id, null);
+  activePlayers.set(socket.id, { position: null, rotation: null, username: null, color: null });
 
   const playersSnapshot = Array.from(activePlayers.entries())
-    .filter(([, data]) => data && data.position)
-    .map(([id, data]) => ({ id, position: data.position, rotation: data.rotation }));
+    .filter(([, data]) => data.position)
+    .map(([id, data]) => ({
+      id,
+      position: data.position,
+      rotation: data.rotation,
+      username: data.username,
+      color: data.color
+    }));
 
   socket.emit('existingPlayers', playersSnapshot);
   io.emit('activePlayerCount', activePlayers.size);
+
+  socket.on('playerProfile', ({ username }) => {
+    const trimmed = typeof username === 'string' ? username.trim().slice(0, 20) : '';
+    if (!trimmed) {
+      socket.emit('playerProfileAck', { error: 'Name is required' });
+      return;
+    }
+
+    const current = activePlayers.get(socket.id) || {};
+    const color = current.color || generateColorFromId(`${socket.id}${trimmed}`);
+    const updated = {
+      ...current,
+      username: trimmed,
+      color
+    };
+    activePlayers.set(socket.id, updated);
+
+    const payload = { id: socket.id, username: trimmed, color };
+    socket.emit('playerProfileAck', payload);
+    socket.broadcast.emit('playerProfileUpdated', payload);
+  });
 
   socket.on('playerUpdate', (payload) => {
     if (!payload || !payload.position || !payload.rotation) {
@@ -94,12 +156,20 @@ io.on('connection', (socket) => {
       }
     };
 
-    activePlayers.set(socket.id, sanitized);
+    const existing = activePlayers.get(socket.id) || { username: null, color: null };
+    const updated = {
+      ...existing,
+      position: sanitized.position,
+      rotation: sanitized.rotation
+    };
+    activePlayers.set(socket.id, updated);
 
     socket.broadcast.emit('playerUpdated', {
       id: socket.id,
       position: sanitized.position,
-      rotation: sanitized.rotation
+      rotation: sanitized.rotation,
+      username: updated.username,
+      color: updated.color
     });
   });
 

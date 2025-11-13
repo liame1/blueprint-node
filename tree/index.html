@@ -16,6 +16,16 @@
 		<div id="container"></div>
 		<div id="player-count" class="player-count">Players Online: 0</div>
 		<div id="loading-indicator" class="loading-indicator">Loading world...</div>
+		<div id="username-overlay" class="username-overlay visible">
+			<div class="username-card">
+				<h2>Enter your name</h2>
+				<form id="username-form" autocomplete="off">
+					<input id="username-input" type="text" maxlength="20" placeholder="Your name" required />
+					<button type="submit">Join</button>
+					<p id="username-error" class="username-error" aria-live="polite"></p>
+				</form>
+			</div>
+		</div>
 
 		<script type="importmap">
 			{
@@ -52,10 +62,38 @@
 			const ENABLE_DEBUG_GUI = window.location.search.includes('debugGui');
 			const playerCountElement = document.getElementById('player-count');
 			const loadingIndicator = document.getElementById('loading-indicator');
+			const usernameOverlay = document.getElementById('username-overlay');
+			const usernameForm = document.getElementById('username-form');
+			const usernameInput = document.getElementById('username-input');
+			const usernameError = document.getElementById('username-error');
 			const remoteBodyGeometry = new THREE.CylinderGeometry( 0.3, 0.3, 1.2, 12 );
 			const remoteHeadGeometry = new THREE.SphereGeometry( 0.3, 16, 12 );
-			const remoteBodyMaterial = new THREE.MeshStandardMaterial( { color: 0x3a8ef6 } );
-			const remoteHeadMaterial = new THREE.MeshStandardMaterial( { color: 0xffffff } );
+			const DEFAULT_PLAYER_COLOR = '#3a8ef6';
+			const PROFILE_STORAGE_KEY = 'bp-player-profile';
+			let playerUsername = '';
+			let playerColor = DEFAULT_PLAYER_COLOR;
+			let hasProfile = false;
+
+			try {
+				const stored = window.localStorage.getItem( PROFILE_STORAGE_KEY );
+				if ( stored ) {
+					const parsed = JSON.parse( stored );
+					if ( parsed && typeof parsed.username === 'string' && parsed.username.trim() ) {
+						playerUsername = parsed.username.trim();
+						hasProfile = true;
+					}
+					if ( parsed && typeof parsed.color === 'string' && parsed.color ) {
+						playerColor = parsed.color;
+					}
+				}
+			} catch ( error ) {
+				console.warn( 'Failed to load stored profile', error );
+			}
+
+			if ( hasProfile && usernameOverlay ) {
+				usernameOverlay.classList.add( 'hidden' );
+				usernameOverlay.style.display = 'none';
+			}
 
 			const clock = new THREE.Clock();
 
@@ -96,21 +134,115 @@
 			renderer.toneMapping = THREE.ACESFilmicToneMapping;
 			container.appendChild( renderer.domElement );
 
+			if ( usernameForm ) {
+				usernameForm.addEventListener( 'submit', ( event ) => {
+					event.preventDefault();
+					if ( ! socket.connected ) {
+						if ( usernameError ) {
+							usernameError.textContent = 'Connecting...';
+						}
+						return;
+					}
+					const value = ( usernameInput?.value || '' ).trim();
+					if ( ! value ) {
+						if ( usernameError ) {
+							usernameError.textContent = 'Please enter a name.';
+						}
+						return;
+					}
+					playerUsername = value;
+					hasProfile = true;
+					if ( usernameError ) {
+						usernameError.textContent = '';
+					}
+					socket.emit( 'playerProfile', { username: value } );
+				} );
+			}
+
+			function showUsernameOverlay() {
+				if ( ! usernameOverlay ) return;
+				usernameOverlay.classList.remove( 'hidden' );
+				usernameOverlay.style.display = 'flex';
+				setTimeout( () => {
+					if ( usernameInput && document.activeElement !== usernameInput ) {
+						usernameInput.focus();
+					}
+				}, 50 );
+			}
+
+			function hideUsernameOverlay() {
+				if ( ! usernameOverlay ) return;
+				usernameOverlay.classList.add( 'hidden' );
+				setTimeout( () => {
+					usernameOverlay.style.display = 'none';
+				}, 220 );
+			}
+
+			function persistProfile() {
+				try {
+					window.localStorage.setItem( PROFILE_STORAGE_KEY, JSON.stringify( {
+						username: playerUsername,
+						color: playerColor
+					} ) );
+				} catch ( error ) {
+					console.warn( 'Failed to persist profile', error );
+				}
+			}
+
+			function clearStoredProfile() {
+				try {
+					window.localStorage.removeItem( PROFILE_STORAGE_KEY );
+				} catch ( error ) {
+					console.warn( 'Failed to clear stored profile', error );
+				}
+			}
+
 			socket.on( 'existingPlayers', ( players ) => {
 				players.forEach( ( player ) => {
 					if ( ! player || player.id === socket.id ) return;
-					createOrUpdateRemotePlayer( player.id, player.position, player.rotation );
+					createOrUpdateRemotePlayer( player.id, player.position, player.rotation, player.username, player.color );
 				} );
 			} );
 
 			socket.on( 'playerUpdated', ( player ) => {
 				if ( ! player || player.id === socket.id ) return;
-				createOrUpdateRemotePlayer( player.id, player.position, player.rotation );
+				createOrUpdateRemotePlayer( player.id, player.position, player.rotation, player.username, player.color );
 			} );
 
 			socket.on( 'playerDisconnected', ( { id } = {} ) => {
 				if ( ! id ) return;
 				removeRemotePlayer( id );
+			} );
+
+			socket.on( 'playerProfileUpdated', ( data ) => {
+				if ( ! data || data.id === socket.id ) return;
+				createOrUpdateRemotePlayer( data.id, data.position, data.rotation, data.username, data.color );
+			} );
+
+			socket.on( 'playerProfileAck', ( payload ) => {
+				if ( ! payload ) return;
+				if ( payload.error ) {
+					hasProfile = false;
+					playerUsername = '';
+					playerColor = DEFAULT_PLAYER_COLOR;
+					if ( usernameError ) {
+						usernameError.textContent = payload.error;
+					}
+					showUsernameOverlay();
+					clearStoredProfile();
+					return;
+				}
+
+				playerUsername = payload.username || playerUsername;
+				playerColor = payload.color || playerColor || DEFAULT_PLAYER_COLOR;
+				hasProfile = true;
+				persistProfile();
+
+				if ( usernameError ) {
+					usernameError.textContent = '';
+				}
+				hideUsernameOverlay();
+				sendPlayerState( true );
 			} );
 
 			socket.on( 'activePlayerCount', ( count ) => {
@@ -121,7 +253,15 @@
 
 			socket.on( 'connect', () => {
 				lastPlayerUpdate = 0;
-				sendPlayerState( true );
+				if ( playerUsername ) {
+					hasProfile = true;
+					socket.emit( 'playerProfile', { username: playerUsername } );
+					hideUsernameOverlay();
+					sendPlayerState( true );
+				} else {
+					hasProfile = false;
+					showUsernameOverlay();
+				}
 			} );
 
 			let stats = null;
@@ -568,49 +708,184 @@
 				} );
 			}
 
-			function createOrUpdateRemotePlayer( id, position = {}, rotation = {} ) {
-				if ( typeof position.x !== 'number' || typeof position.y !== 'number' || typeof position.z !== 'number' ) {
-					return;
-				}
-
+			function ensureRemoteEntry( id ) {
 				let entry = remotePlayers.get( id );
 				if ( ! entry ) {
-					entry = { mesh: buildRemotePlayerMesh() };
-					scene.add( entry.mesh );
+					entry = {
+						group: null,
+						body: null,
+						head: null,
+						label: null,
+						username: '',
+						color: DEFAULT_PLAYER_COLOR
+					};
 					remotePlayers.set( id, entry );
 				}
+				return entry;
+			}
 
-				entry.mesh.position.set( position.x, position.y, position.z );
-				entry.mesh.rotation.set( 0, 0, 0 );
+			function createOrUpdateRemotePlayer( id, position = {}, rotation = {}, username = null, color = null ) {
+				const entry = applyPlayerProfile( id, username, color );
 
-				if ( typeof rotation.y === 'number' ) {
-					entry.mesh.rotation.y = rotation.y;
+				const hasValidPosition = position && Number.isFinite( position.x ) && Number.isFinite( position.y ) && Number.isFinite( position.z );
+				if ( ! hasValidPosition ) {
+					return entry;
 				}
+
+				if ( ! entry.group ) {
+					buildRemotePlayerAssets( entry );
+					scene.add( entry.group );
+				}
+
+				entry.group.position.set( position.x, position.y, position.z );
+				entry.group.rotation.set( 0, 0, 0 );
+
+				if ( rotation && Number.isFinite( rotation.y ) ) {
+					entry.group.rotation.y = rotation.y;
+				}
+
+				return entry;
 			}
 
 			function removeRemotePlayer( id ) {
 				const entry = remotePlayers.get( id );
 				if ( ! entry ) return;
 
-				scene.remove( entry.mesh );
+				if ( entry.group ) {
+					scene.remove( entry.group );
+				}
+				if ( entry.body?.material ) {
+					entry.body.material.dispose();
+				}
+				if ( entry.head?.material ) {
+					entry.head.material.dispose();
+				}
+				if ( entry.label?.material ) {
+					if ( entry.label.material.map ) {
+						entry.label.material.map.dispose();
+					}
+					entry.label.material.dispose();
+				}
+
 				remotePlayers.delete( id );
 			}
 
-			function buildRemotePlayerMesh() {
+			function buildNameTexture( text = 'Player', color = DEFAULT_PLAYER_COLOR ) {
+				const canvas = document.createElement( 'canvas' );
+				canvas.width = 256;
+				canvas.height = 96;
+				const ctx = canvas.getContext( '2d' );
+				ctx.clearRect( 0, 0, canvas.width, canvas.height );
+
+				const radius = 28;
+				ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+				ctx.beginPath();
+				ctx.moveTo( radius, 0 );
+				ctx.lineTo( canvas.width - radius, 0 );
+				ctx.quadraticCurveTo( canvas.width, 0, canvas.width, radius );
+				ctx.lineTo( canvas.width, canvas.height - radius );
+				ctx.quadraticCurveTo( canvas.width, canvas.height, canvas.width - radius, canvas.height );
+				ctx.lineTo( radius, canvas.height );
+				ctx.quadraticCurveTo( 0, canvas.height, 0, canvas.height - radius );
+				ctx.lineTo( 0, radius );
+				ctx.quadraticCurveTo( 0, 0, radius, 0 );
+				ctx.closePath();
+				ctx.fill();
+				ctx.lineWidth = 2;
+				ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+				ctx.stroke();
+
+				ctx.font = '600 36px "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+				ctx.fillStyle = color || '#ffffff';
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+				ctx.fillText( text, canvas.width / 2, canvas.height / 2 );
+
+				const texture = new THREE.CanvasTexture( canvas );
+				texture.anisotropy = 4;
+				texture.minFilter = THREE.LinearFilter;
+				texture.magFilter = THREE.LinearFilter;
+				return texture;
+			}
+
+			function createNameLabelSprite( username, color ) {
+				const texture = buildNameTexture( username, color );
+				const material = new THREE.SpriteMaterial( { map: texture, transparent: true } );
+				const sprite = new THREE.Sprite( material );
+				sprite.scale.set( 1.6, 0.45, 1 );
+				sprite.position.set( 0, 1.6, 0 );
+				return sprite;
+			}
+
+			function updateNameLabel( sprite, username, color ) {
+				if ( ! sprite || ! sprite.material ) return;
+				const oldTexture = sprite.material.map;
+				const texture = buildNameTexture( username, color );
+				sprite.material.map = texture;
+				sprite.material.needsUpdate = true;
+				if ( oldTexture ) {
+					oldTexture.dispose();
+				}
+			}
+
+			function setEntryColor( entry, color ) {
+				entry.color = color || DEFAULT_PLAYER_COLOR;
+				if ( entry.body ) {
+					entry.body.material.color.set( entry.color );
+				}
+				if ( entry.head ) {
+					const headTint = new THREE.Color( entry.color ).lerp( new THREE.Color( 0xffffff ), 0.6 );
+					entry.head.material.color.set( headTint );
+				}
+				if ( entry.label ) {
+					updateNameLabel( entry.label, entry.username || 'Player', entry.color );
+				}
+			}
+
+			function applyPlayerProfile( id, username, color ) {
+				const entry = ensureRemoteEntry( id );
+				if ( typeof username === 'string' && username.trim() ) {
+					entry.username = username.trim();
+					if ( entry.label ) {
+						updateNameLabel( entry.label, entry.username, entry.color );
+					}
+				}
+
+				if ( typeof color === 'string' && color ) {
+					setEntryColor( entry, color );
+				}
+
+				if ( entry.group && ! entry.label ) {
+					entry.label = createNameLabelSprite( entry.username || 'Player', entry.color );
+					entry.group.add( entry.label );
+				}
+
+				return entry;
+			}
+
+			function buildRemotePlayerAssets( entry ) {
 				const group = new THREE.Group();
 
-				const body = new THREE.Mesh( remoteBodyGeometry, remoteBodyMaterial );
+				const bodyMaterial = new THREE.MeshStandardMaterial( { color: entry.color || DEFAULT_PLAYER_COLOR } );
+				const body = new THREE.Mesh( remoteBodyGeometry, bodyMaterial );
 				body.castShadow = true;
 				body.receiveShadow = true;
 				group.add( body );
 
-				const head = new THREE.Mesh( remoteHeadGeometry, remoteHeadMaterial );
+				const headColor = new THREE.Color( entry.color || DEFAULT_PLAYER_COLOR ).lerp( new THREE.Color( 0xffffff ), 0.6 );
+				const head = new THREE.Mesh( remoteHeadGeometry, new THREE.MeshStandardMaterial( { color: headColor } ) );
 				head.position.y = 0.9;
 				head.castShadow = true;
 				head.receiveShadow = true;
 				group.add( head );
 
-				return group;
+				const label = createNameLabelSprite( entry.username || 'Player', entry.color || DEFAULT_PLAYER_COLOR );
+				group.add( label );
+
+				entry.group = group;
+				entry.body = body;
+				entry.head = head;
+				entry.label = label;
 			}
 
 			function animate() {
@@ -633,6 +908,12 @@
 				}
 
 				sendPlayerState();
+
+				remotePlayers.forEach( ( entry ) => {
+					if ( entry.label ) {
+						entry.label.quaternion.copy( camera.quaternion );
+					}
+				} );
 
 				renderer.render( scene, camera );
 

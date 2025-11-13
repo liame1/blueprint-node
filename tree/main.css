@@ -35,6 +35,9 @@ button {
 	user-select: none;
 	pointer-events: none;
 	z-index: 1; /* TODO Solve this in HTML */
+
+	visibility: hidden;
+	
 }
 
 a, button, input, select {
@@ -116,4 +119,85 @@ a, button, input, select {
 	letter-spacing: 0.05em;
 	z-index: 3;
 	pointer-events: none;
+}
+
+.username-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background: rgba(0, 0, 0, 0.75);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 4;
+	transition: opacity 0.2s ease;
+}
+
+.username-overlay.hidden {
+	pointer-events: none;
+	opacity: 0;
+}
+
+.username-card {
+	background: rgba(12, 18, 34, 0.92);
+	padding: 24px 28px;
+	border-radius: 12px;
+	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+	max-width: 320px;
+	width: 90%;
+	text-align: center;
+}
+
+.username-card h2 {
+	margin-top: 0;
+	margin-bottom: 16px;
+	font-size: 20px;
+	letter-spacing: 0.04em;
+}
+
+#username-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+#username-input {
+	padding: 10px 12px;
+	border-radius: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	background: rgba(255, 255, 255, 0.1);
+	color: #fff;
+	font-size: 14px;
+}
+
+#username-input:focus {
+	outline: none;
+	border-color: rgba(82, 190, 255, 0.8);
+	box-shadow: 0 0 0 2px rgba(82, 190, 255, 0.25);
+}
+
+#username-form button {
+	padding: 10px 12px;
+	border-radius: 6px;
+	border: none;
+	background: linear-gradient(135deg, #3a8ef6, #7d5efc);
+	color: #fff;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	cursor: pointer;
+	transition: opacity 0.2s ease;
+}
+
+#username-form button:hover {
+	opacity: 0.85;
+}
+
+.username-error {
+	min-height: 16px;
+	margin: 0;
+	font-size: 12px;
+	color: #ff8d8d;
 }
