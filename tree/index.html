@@ -80,7 +80,7 @@
 			const PLAYER_CAPSULE_END_Y = 1.0 * PLAYER_SCALE;
 			const PLAYER_CENTER_TO_HEAD = PLAYER_CAPSULE_END_Y - ( ( PLAYER_CAPSULE_START_Y + PLAYER_CAPSULE_END_Y ) / 2 );
 			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_SCALE;
-			const PLAYER_SPAWN_OFFSET = 1;
+			const PLAYER_SPAWN_OFFSET = 3;
 			let playerUsername = '';
 			let playerColor = DEFAULT_PLAYER_COLOR;
 			let hasProfile = false;
@@ -647,11 +647,11 @@
 
 					} );
 
-					const helper = new OctreeHelper( worldOctree );
-					helper.visible = false;
-					scene.add( helper );
-
 					if ( ENABLE_DEBUG_GUI ) {
+						const helper = new OctreeHelper( worldOctree );
+						helper.visible = false;
+						scene.add( helper );
+
 						const gui = new GUI( { width: 200 } );
 						gui.add( { debug: false }, 'debug' )
 							.onChange( function ( value ) {
@@ -670,11 +670,6 @@
 					if ( ! loadingIndicator || ! event.total ) return;
 					const percent = Math.min( 100, Math.round( ( event.loaded / event.total ) * 100 ) );
 					loadingIndicator.textContent = `Loading world... ${percent}%`;
-				}, ( error ) => {
-					console.error( 'Failed to load world', error );
-					if ( loadingIndicator ) {
-						loadingIndicator.textContent = 'Failed to load world';
-					}
 				} );
 			};
 
