@@ -9,17 +9,19 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
+const PUBLIC_DIR = path.join(__dirname, 'tree');
 
 // Middleware
 app.use(express.json());
-app.use(express.static(__dirname));
+app.use(express.static(PUBLIC_DIR));
+app.use('/chat', express.static(__dirname));
 
 // Store active users and their rooms
 const activeUsers = new Map(); // socketId -> { username, userId, roomId }
 
 // Serve index.html
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // API endpoint to get all rooms
