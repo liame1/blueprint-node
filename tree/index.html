@@ -75,12 +75,12 @@
 			const PLAYER_LABEL_OFFSET = 1.4;
 			const PLAYER_LABEL_SCALE_X = ( 0.32 / PLAYER_SCALE );
 			const PLAYER_LABEL_SCALE_Y = ( 0.09 / PLAYER_SCALE );
-			const PLAYER_CAPSULE_RADIUS = 0.35 * PLAYER_SCALE;
-			const PLAYER_CAPSULE_START_Y = 0.35 * PLAYER_SCALE;
-			const PLAYER_CAPSULE_END_Y = 1.0 * PLAYER_SCALE;
+			const PLAYER_CAPSULE_RADIUS = 0.35;
+			const PLAYER_CAPSULE_START_Y = 0.35;
+			const PLAYER_CAPSULE_END_Y = 1.6;
 			const PLAYER_CENTER_TO_HEAD = PLAYER_CAPSULE_END_Y - ( ( PLAYER_CAPSULE_START_Y + PLAYER_CAPSULE_END_Y ) / 2 );
 			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_SCALE;
-			const PLAYER_SPAWN_OFFSET = 3;
+			const PLAYER_SPAWN_OFFSET = 2;
 			let playerUsername = '';
 			let playerColor = DEFAULT_PLAYER_COLOR;
 			let hasProfile = false;
@@ -611,7 +611,7 @@
 
 					if ( keyStates[ 'Space' ] ) {
 
-						playerVelocity.y = 35;
+						playerVelocity.y = 5;
 
 					}
 
