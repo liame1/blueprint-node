@@ -70,6 +70,16 @@
 			const remoteHeadGeometry = new THREE.SphereGeometry( 0.3, 16, 12 );
 			const DEFAULT_PLAYER_COLOR = '#3a8ef6';
 			const PROFILE_STORAGE_KEY = 'bp-player-profile';
+			const PLAYER_SCALE = 0.2;
+			const PLAYER_HEAD_OFFSET = 0.9;
+			const PLAYER_LABEL_OFFSET = 1.4;
+			const PLAYER_LABEL_SCALE_X = 0.32;
+			const PLAYER_LABEL_SCALE_Y = 0.09;
+			const PLAYER_CAPSULE_RADIUS = 0.06;
+			const PLAYER_CAPSULE_START_Y = PLAYER_CAPSULE_RADIUS;
+			const PLAYER_CAPSULE_END_Y = PLAYER_CAPSULE_START_Y + 0.18;
+			const PLAYER_CENTER_TO_HEAD = PLAYER_CAPSULE_END_Y - ( ( PLAYER_CAPSULE_START_Y + PLAYER_CAPSULE_END_Y ) / 2 );
+			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_SCALE;
 			let playerUsername = '';
 			let playerColor = DEFAULT_PLAYER_COLOR;
 			let hasProfile = false;
@@ -303,7 +313,11 @@
 
 			const worldOctree = new Octree();
 
-			const playerCollider = new Capsule( new THREE.Vector3( 0, 0.35, 0 ), new THREE.Vector3( 0, 1, 0 ), 0.35 );
+			const playerCollider = new Capsule(
+				new THREE.Vector3( 0, PLAYER_CAPSULE_START_Y, 0 ),
+				new THREE.Vector3( 0, PLAYER_CAPSULE_END_Y, 0 ),
+				PLAYER_CAPSULE_RADIUS
+			);
 
 			const playerVelocity = new THREE.Vector3();
 			const playerDirection = new THREE.Vector3();
@@ -675,9 +689,9 @@
 
 				if ( camera.position.y <= - 25 ) {
 
-					playerCollider.start.set( 0, 0.35, 0 );
-					playerCollider.end.set( 0, 1, 0 );
-					playerCollider.radius = 0.35;
+					playerCollider.start.set( 0, PLAYER_CAPSULE_START_Y, 0 );
+					playerCollider.end.set( 0, PLAYER_CAPSULE_END_Y, 0 );
+					playerCollider.radius = PLAYER_CAPSULE_RADIUS;
 					camera.position.copy( playerCollider.end );
 					camera.rotation.set( 0, 0, 0 );
 
@@ -717,7 +731,9 @@
 						head: null,
 						label: null,
 						username: '',
-						color: DEFAULT_PLAYER_COLOR
+						color: DEFAULT_PLAYER_COLOR,
+						lastCenter: null,
+						lastRotation: 0
 					};
 					remotePlayers.set( id, entry );
 				}
@@ -728,8 +744,12 @@
 				const entry = applyPlayerProfile( id, username, color );
 
 				const hasValidPosition = position && Number.isFinite( position.x ) && Number.isFinite( position.y ) && Number.isFinite( position.z );
-				if ( ! hasValidPosition ) {
-					return entry;
+				if ( hasValidPosition ) {
+					entry.lastCenter = { x: position.x, y: position.y, z: position.z };
+				}
+
+				if ( rotation && Number.isFinite( rotation.y ) ) {
+					entry.lastRotation = rotation.y;
 				}
 
 				if ( ! entry.group ) {
@@ -737,12 +757,7 @@
 					scene.add( entry.group );
 				}
 
-				entry.group.position.set( position.x, position.y, position.z );
-				entry.group.rotation.set( 0, 0, 0 );
-
-				if ( rotation && Number.isFinite( rotation.y ) ) {
-					entry.group.rotation.y = rotation.y;
-				}
+				applyRemoteTransform( entry );
 
 				return entry;
 			}
@@ -812,8 +827,8 @@
 				const texture = buildNameTexture( username, color );
 				const material = new THREE.SpriteMaterial( { map: texture, transparent: true } );
 				const sprite = new THREE.Sprite( material );
-				sprite.scale.set( 1.6, 0.45, 1 );
-				sprite.position.set( 0, 1.6, 0 );
+				sprite.scale.set( PLAYER_LABEL_SCALE_X, PLAYER_LABEL_SCALE_Y, 1 );
+				sprite.position.set( 0, PLAYER_LABEL_OFFSET, 0 );
 				return sprite;
 			}
 
@@ -838,6 +853,8 @@
 					entry.head.material.color.set( headTint );
 				}
 				if ( entry.label ) {
+					entry.label.scale.set( PLAYER_LABEL_SCALE_X, PLAYER_LABEL_SCALE_Y, 1 );
+					entry.label.position.y = PLAYER_LABEL_OFFSET;
 					updateNameLabel( entry.label, entry.username || 'Player', entry.color );
 				}
 			}
@@ -847,6 +864,8 @@
 				if ( typeof username === 'string' && username.trim() ) {
 					entry.username = username.trim();
 					if ( entry.label ) {
+						entry.label.scale.set( PLAYER_LABEL_SCALE_X, PLAYER_LABEL_SCALE_Y, 1 );
+						entry.label.position.y = PLAYER_LABEL_OFFSET;
 						updateNameLabel( entry.label, entry.username, entry.color );
 					}
 				}
@@ -856,7 +875,8 @@
 				}
 
 				if ( entry.group && ! entry.label ) {
-					entry.label = createNameLabelSprite( entry.username || 'Player', entry.color );
+					entry.label = createNameLabelSprite( entry.username || 'Player', entry.color || DEFAULT_PLAYER_COLOR );
+					entry.label.position.y = PLAYER_LABEL_OFFSET;
 					entry.group.add( entry.label );
 				}
 
@@ -865,6 +885,14 @@
 
 			function buildRemotePlayerAssets( entry ) {
 				const group = new THREE.Group();
+				group.scale.setScalar( PLAYER_SCALE );
+
+				if ( entry.lastCenter ) {
+					group.position.set( entry.lastCenter.x, entry.lastCenter.y, entry.lastCenter.z );
+				}
+				if ( typeof entry.lastRotation === 'number' ) {
+					group.rotation.set( 0, entry.lastRotation, 0 );
+				}
 
 				const bodyMaterial = new THREE.MeshStandardMaterial( { color: entry.color || DEFAULT_PLAYER_COLOR } );
 				const body = new THREE.Mesh( remoteBodyGeometry, bodyMaterial );
@@ -874,18 +902,31 @@
 
 				const headColor = new THREE.Color( entry.color || DEFAULT_PLAYER_COLOR ).lerp( new THREE.Color( 0xffffff ), 0.6 );
 				const head = new THREE.Mesh( remoteHeadGeometry, new THREE.MeshStandardMaterial( { color: headColor } ) );
-				head.position.y = 0.9;
+				head.position.y = PLAYER_HEAD_OFFSET;
 				head.castShadow = true;
 				head.receiveShadow = true;
 				group.add( head );
 
 				const label = createNameLabelSprite( entry.username || 'Player', entry.color || DEFAULT_PLAYER_COLOR );
+				label.position.y = PLAYER_LABEL_OFFSET;
 				group.add( label );
 
 				entry.group = group;
 				entry.body = body;
 				entry.head = head;
 				entry.label = label;
+
+				applyRemoteTransform( entry );
+			}
+
+			function applyRemoteTransform( entry ) {
+				if ( ! entry.group || ! entry.lastCenter ) return;
+				const desiredHeadCenter = entry.lastCenter.y + PLAYER_CENTER_TO_HEAD;
+				const groupY = desiredHeadCenter - PLAYER_HEAD_WORLD_OFFSET;
+				entry.group.position.set( entry.lastCenter.x, groupY, entry.lastCenter.z );
+				if ( typeof entry.lastRotation === 'number' ) {
+					entry.group.rotation.y = entry.lastRotation;
+				}
 			}
 
 			function animate() {

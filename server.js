@@ -15,6 +15,16 @@ const PUBLIC_DIR = path.join(__dirname, 'tree');
 const NODE_MODULES_DIR = path.join(__dirname, 'node_modules');
 const GLTF_DIR = path.join(PUBLIC_DIR, 'gltf');
 
+const STATIC_CACHE_OPTIONS = {
+  maxAge: '7d',
+  immutable: true,
+  setHeaders: (res, servedPath) => {
+    if (servedPath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  }
+};
+
 function generateColorFromId(id) {
   const hash = crypto.createHash('sha1').update(String(id)).digest('hex');
   const hue = parseInt(hash.slice(0, 2), 16) / 255; // 0-1
@@ -61,7 +71,7 @@ app.use('/gltf', express.static(GLTF_DIR, {
     }
   }
 }));
-app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
+app.use(express.static(PUBLIC_DIR, STATIC_CACHE_OPTIONS));
 app.use('/node_modules', express.static(NODE_MODULES_DIR, { maxAge: '1d' }));
 app.use('/chat', express.static(__dirname));
 
