@@ -10,10 +10,12 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'tree');
+const NODE_MODULES_DIR = path.join(__dirname, 'node_modules');
 
 // Middleware
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
+app.use('/node_modules', express.static(NODE_MODULES_DIR));
 app.use('/chat', express.static(__dirname));
 
 // Store active users and their rooms

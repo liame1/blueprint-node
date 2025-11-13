@@ -7,7 +7,7 @@ services:
   repo: https://github.com/liame1/blueprint-node
   plan: free
   region: oregon
-  buildCommand: yarn install
+  buildCommand: npm install
   startCommand: node server.js
   autoDeployTrigger: commit
   envVars:
