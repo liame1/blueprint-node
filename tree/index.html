@@ -9,9 +9,7 @@
 	</head>
 	<body>
 		<div id="info">
-			Octree threejs demo - basic collisions with static triangle mesh<br />
-			MOUSE to look around and to throw balls<br/>
-			WASD to move and SPACE to jump
+			
 		</div>
 		<div id="container"></div>
 		<div id="player-count" class="player-count">Players Online: 0</div>
@@ -70,16 +68,19 @@
 			const remoteHeadGeometry = new THREE.SphereGeometry( 0.3, 16, 12 );
 			const DEFAULT_PLAYER_COLOR = '#3a8ef6';
 			const PROFILE_STORAGE_KEY = 'bp-player-profile';
-			const PLAYER_SCALE = 0.04;
+			const PLAYER_MODEL_SCALE = 0.2;
 			const PLAYER_HEAD_OFFSET = 0.9;
-			const PLAYER_LABEL_OFFSET = 1.4;
-			const PLAYER_LABEL_SCALE_X = ( 0.32 / PLAYER_SCALE );
-			const PLAYER_LABEL_SCALE_Y = ( 0.09 / PLAYER_SCALE );
-			const PLAYER_CAPSULE_RADIUS = 0.35;
-			const PLAYER_CAPSULE_START_Y = 0.35;
-			const PLAYER_CAPSULE_END_Y = 1.6;
+			const PLAYER_HEAD_RADIUS = 0.3 * PLAYER_MODEL_SCALE;
+			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_MODEL_SCALE;
+			const PLAYER_CAPSULE_RADIUS = 0.3 * PLAYER_MODEL_SCALE;
+			const PLAYER_CAPSULE_START_Y = PLAYER_CAPSULE_RADIUS;
+			const PLAYER_MODEL_HEIGHT = ( PLAYER_HEAD_OFFSET + 0.3 ) * PLAYER_MODEL_SCALE;
+			const PLAYER_CAPSULE_END_Y = PLAYER_CAPSULE_START_Y + PLAYER_MODEL_HEIGHT;
 			const PLAYER_CENTER_TO_HEAD = PLAYER_CAPSULE_END_Y - ( ( PLAYER_CAPSULE_START_Y + PLAYER_CAPSULE_END_Y ) / 2 );
-			const PLAYER_HEAD_WORLD_OFFSET = PLAYER_HEAD_OFFSET * PLAYER_SCALE;
+			const PLAYER_CAMERA_OFFSET = PLAYER_HEAD_RADIUS;
+			const PLAYER_LABEL_OFFSET = PLAYER_CAPSULE_END_Y + PLAYER_HEAD_RADIUS + 0.05;
+			const PLAYER_LABEL_SCALE_X = 0.6;
+			const PLAYER_LABEL_SCALE_Y = 0.18;
 			const PLAYER_SPAWN_OFFSET = 2;
 			let playerUsername = '';
 			let playerColor = DEFAULT_PLAYER_COLOR;
@@ -323,7 +324,7 @@
 
 			const playerVelocity = new THREE.Vector3();
 			const playerDirection = new THREE.Vector3();
-			camera.position.set( 0, PLAYER_CAPSULE_END_Y + PLAYER_SPAWN_OFFSET, 0 );
+			camera.position.set( 0, PLAYER_CAPSULE_END_Y + PLAYER_SPAWN_OFFSET + PLAYER_CAMERA_OFFSET, 0 );
 
 			let playerOnFloor = false;
 			let mouseTime = 0;
@@ -449,6 +450,7 @@
 				playerCollisions();
 
 				camera.position.copy( playerCollider.end );
+				camera.position.y += PLAYER_CAMERA_OFFSET;
 
 			}
 
@@ -883,7 +885,6 @@
 
 			function buildRemotePlayerAssets( entry ) {
 				const group = new THREE.Group();
-				group.scale.setScalar( PLAYER_SCALE );
 
 				if ( entry.lastCenter ) {
 					group.position.set( entry.lastCenter.x, entry.lastCenter.y, entry.lastCenter.z );
@@ -892,21 +893,24 @@
 					group.rotation.set( 0, entry.lastRotation, 0 );
 				}
 
+				const bodyGeometry = remoteBodyGeometry.clone();
+				bodyGeometry.scale( PLAYER_MODEL_SCALE, PLAYER_MODEL_SCALE, PLAYER_MODEL_SCALE );
 				const bodyMaterial = new THREE.MeshStandardMaterial( { color: entry.color || DEFAULT_PLAYER_COLOR } );
-				const body = new THREE.Mesh( remoteBodyGeometry, bodyMaterial );
+				const body = new THREE.Mesh( bodyGeometry, bodyMaterial );
 				body.castShadow = true;
 				body.receiveShadow = true;
 				group.add( body );
 
+				const headGeometry = remoteHeadGeometry.clone();
+				headGeometry.scale( PLAYER_MODEL_SCALE, PLAYER_MODEL_SCALE, PLAYER_MODEL_SCALE );
 				const headColor = new THREE.Color( entry.color || DEFAULT_PLAYER_COLOR ).lerp( new THREE.Color( 0xffffff ), 0.6 );
-				const head = new THREE.Mesh( remoteHeadGeometry, new THREE.MeshStandardMaterial( { color: headColor } ) );
-				head.position.y = PLAYER_HEAD_OFFSET;
+				const head = new THREE.Mesh( headGeometry, new THREE.MeshStandardMaterial( { color: headColor } ) );
+				head.position.y = PLAYER_HEAD_WORLD_OFFSET;
 				head.castShadow = true;
 				head.receiveShadow = true;
 				group.add( head );
 
 				const label = createNameLabelSprite( entry.username || 'Player', entry.color || DEFAULT_PLAYER_COLOR );
-				label.position.y = PLAYER_LABEL_OFFSET;
 				group.add( label );
 
 				entry.group = group;
