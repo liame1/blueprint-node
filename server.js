@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const compression = require('compression');
 const db = require('./db');
 
 const app = express();
@@ -11,11 +12,22 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'tree');
 const NODE_MODULES_DIR = path.join(__dirname, 'node_modules');
+const GLTF_DIR = path.join(PUBLIC_DIR, 'gltf');
 
 // Middleware
+app.use(compression());
 app.use(express.json());
-app.use(express.static(PUBLIC_DIR));
-app.use('/node_modules', express.static(NODE_MODULES_DIR));
+app.use('/gltf', express.static(GLTF_DIR, {
+  maxAge: '30d',
+  immutable: true,
+  setHeaders: (res, servedPath) => {
+    if (servedPath.endsWith('.glb')) {
+      res.setHeader('Content-Type', 'model/gltf-binary');
+    }
+  }
+}));
+app.use(express.static(PUBLIC_DIR, { maxAge: '7d', immutable: true }));
+app.use('/node_modules', express.static(NODE_MODULES_DIR, { maxAge: '1d' }));
 app.use('/chat', express.static(__dirname));
 
 // Store active users and their rooms
